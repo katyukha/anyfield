@@ -46,6 +46,9 @@ Will result in::
 
 import six
 import operator
+import logging
+
+_logger = logging.getLogger(__name__)
 
 __all__ = (
     'SField',
@@ -143,8 +146,9 @@ class Operator(object):
         self.__doc__ = self.operation_fn.__doc__
         self.__name__ = self.operation_fn.__name__
 
-    def __call__(self, obj, *args):
-        return obj.__apply_fn__(self.operation_fn, *args)
+    def __call__(self, obj, *args, **kwargs):
+        # on operator call, just add operator's function to field's stack
+        return obj.__apply_fn__(self.operation_fn, *args, **kwargs)
 
     def __get__(self, instance, cls):
         if instance is None:
@@ -167,13 +171,17 @@ class SFieldMeta(type):
             mcs.add_operation(cls, operation)
 
         # Extra operator definition
-        mcs.add_operation(cls, '__getattr__', getattr)
-        mcs.add_operation(cls, '__call__', lambda x, *args: x(*args))
+        # mcs.add_operation(cls, '__getattr__', _getattr_)
+        mcs.add_operation(cls, '__call__', lambda x, *args, **kwargs: x(*args, **kwargs))
 
         # Logical operations. Use bitwise operators for logical cases
         mcs.add_operation(cls, '__and__', lambda x, y: x and y)
         mcs.add_operation(cls, '__or__', lambda x, y: x or y)
         mcs.add_operation(cls, '__invert__', operator.not_)
+
+        # Extra methods
+        mcs.add_operation(cls, 'q_contains', lambda x, y: y in x)
+        mcs.add_operation(cls, 'q_in', lambda x, y: x in y)
 
         return cls
 
@@ -184,6 +192,7 @@ class SFieldMeta(type):
         setattr(cls, name, Operator(name, fn))
 
 
+@six.python_2_unicode_compatible
 class SField(six.with_metaclass(SFieldMeta, object)):
     """ Class that allows to build simple expressions.
         For example, instead of writing something like::
@@ -214,7 +223,7 @@ class SField(six.with_metaclass(SFieldMeta, object)):
         self._stack = []  # operation stack
         self._dummy = dummy
 
-    def __add_op__(self, op, args):
+    def __add_op__(self, op, args, kwargs):
         """ Add operation to operation stack of this SField instance
 
             :param callable op: callable that implements operation
@@ -222,35 +231,12 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             :return: self
             :rtype: SField
         """
+        _logger.debug("__add_op__ called with args (op: %s, args: %s, kwargs: %s)", op, args, kwargs)
         obj = self if self._dummy is False else self.__class__(dummy=False)
-        obj._stack.append((op, args))
+        obj._stack.append((op, args, kwargs))
         return obj
 
-    def __calculate__(self, record):
-        """ Do final calculation of this SField instances for specified record
-        """
-        res = record
-
-        def process_args(args):
-            """ Simple function to precess arguments
-            """
-            for arg in args:
-                if arg is PlaceHolder:
-                    yield res
-                elif isinstance(arg, SField):
-                    yield arg.__calculate__(record)
-                else:
-                    yield arg
-
-        # TODO: implement keyword args processing
-
-        for op, args in self._stack:
-            args = tuple(process_args(args))
-            #print self, op, res, args
-            res = op(*args)
-        return res
-
-    def __apply_fn__(self, fn, *args):
+    def __apply_fn__(self, fn, *args, **kwargs):
         """ Adds ability to apply specified function to record in expression
 
             :param callable fn: function to apply to expression result
@@ -263,7 +249,34 @@ class SField(six.with_metaclass(SFieldMeta, object)):
                 data.sort(key=expr._F)
                 print data  # will print ['1', '3', '4', '10', '16', '21', '23', '53']
         """
-        return self.__add_op__(fn, [PlaceHolder] + list(args))
+        _logger.debug("__apply_fn__ called with args (fn: %s, args: %s, kwargs: %s)", fn, args, kwargs)
+        return self.__add_op__(fn, [PlaceHolder] + list(args), kwargs)
+
+    def __calculate__(self, record):
+        """ Do final calculation of this SField instances for specified record
+        """
+        res = record
+
+        def process_arg(arg):
+            """ Simple function to process arguments
+            """
+            if arg is PlaceHolder:
+                return res
+            elif isinstance(arg, SField):
+                return arg.__calculate__(record)
+            else:
+                return arg
+
+        for op, args, kwargs in self._stack:
+            # process arguments
+            args = tuple((process_arg(arg) for arg in args))
+            kwargs = {key: process_arg(kwargs[key]) for key in kwargs}
+
+            _logger.debug("calc %s iter (op: %s, args: %s, kwargs: %s)", self, op, args, kwargs)
+
+            # do operation
+            res = op(*args, **kwargs)
+        return res
 
     # Shortcut methods
     def _F(self, record):
@@ -274,15 +287,27 @@ class SField(six.with_metaclass(SFieldMeta, object)):
         """
         return self.__calculate__(record)
 
-    def _A(self, fn, *args):
+    def _A(self, fn, *args, **kwargs):
         """ Shortcut for '__apply_fn__' method.
         """
-        return self.__apply_fn__(fn, *args)
+        return self.__apply_fn__(fn, *args, **kwargs)
+
+    # ---
 
     def __repr__(self):
         if self._dummy:
-            return "<SField (dummy)>"
-        return "<SField (%s)>" % len(self._stack)
+            return u"<SField (dummy)>"
+        return u"<SField (%s)>" % len(self._stack)
+
+    def __str__(self):
+        return repr(self)
+
+    def __getattr__(self, name):
+        # this is required to avoid adding to stack repeating call to tese
+        # methods
+        if name in ('_ipython_canary_method_should_not_exist_', '_ipython_display_'):
+            raise AttributeError("Do not add ipython check methods to field stack")
+        return self.__apply_fn__(getattr, name)
 
 
 def toFn(fn):
@@ -302,7 +327,7 @@ def toFn(fn):
 
         :param fn: callable or SField instance
         :rtype: callable
-        :return: if fn is instance of SField, thant it's method .__claculate__ will be returned,
+        :return: if fn is instance of SField, then it's method .__claculate__ will be returned,
                  otherwise 'fn' will be returned unchanged
     """
     if isinstance(fn, SField):
