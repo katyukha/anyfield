@@ -101,15 +101,20 @@ SUPPORTED_OPERATIONS = [
 ]
 
 
+# Filter only operations that are supported by current python version
+# For example '__div__' operation is not supported by python 3
+SUPPORTED_OPERATIONS = [op for op in SUPPORTED_OPERATIONS if getattr(operator, op, False)]
+
+
 @six.python_2_unicode_compatible
-class PlaceHolderClass:
+class PlaceHolderClass(object):
     """ Simple class to represent current calculated value (at start it is record itself), in operation list
     """
     inst = None
 
     def __new__(cls):
         if cls.inst is None:
-            cls.inst = cls()
+            cls.inst = super(PlaceHolderClass, cls).__new__(cls)
         return cls.inst
 
     def __str__(self):
