@@ -218,7 +218,7 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             from anyfield import SField, F
             l = [{'a': 1, 'b': {'c': 5}, 'd': 4},
                  {'a': 2, 'b': {'c': 15}, 'd': 3}]
-            l.sort(key=(SF['a'] + SF['b']['c'] - SF['d'])._F)
+            l.sort(key=(F['a'] + F['b']['c'] - F['d'])._F)
 
         :param bool dummy: if set to True, on next operation new SField instance will be created
 
