@@ -211,8 +211,8 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             >>> l = [{'a': -30, 'b': {'c': 5}, 'd': 4},
             ...      {'a': 2, 'b': {'c': 15}, 'd': 3}]
             >>> l.sort(key=lambda x: x['a'] + x['b']['c'] - x['d'])
-            >>> l
-            [{'a': -30, 'b': {'c': 5}, 'd': 4}, {'a': 2, 'b': {'c': 15}, 'd': 3}]
+            >>> [i['a'] for i in l]  # just print first el from dict
+            [-30, 2]
 
         With this class it is possible to write folowing::
 
@@ -221,8 +221,8 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             ...      {'a': 2, 'b': {'c': 15}, 'd': 3}]
             >>> SF = SField(dummy=True)
             >>> l.sort(key=(SF['a'] + SF['b']['c'] - SF['d'])._F)
-            >>> l
-            [{'a': -30, 'b': {'c': 5}, 'd': 4}, {'a': 2, 'b': {'c': 15}, 'd': 3}]
+            >>> [i['a'] for i in l]  # just print first el from dict
+            [-30, 2]
 
         Or using SF shortcut and F wrapper defined in this module::
 
@@ -230,8 +230,8 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             >>> l = [{'a': -30, 'b': {'c': 5}, 'd': 4},
             ...      {'a': 2, 'b': {'c': 15}, 'd': 3}]
             >>> l.sort(key=(F['a'] + F['b']['c'] - F['d'])._F)
-            >>> l
-            [{'a': -30, 'b': {'c': 5}, 'd': 4}, {'a': 2, 'b': {'c': 15}, 'd': 3}]
+            >>> [i['a'] for i in l]  # just print first el from dict
+            [-30, 2]
 
         :param str name: name of field
         :param bool dummy: if set to True, on next operation new SField instance will be created
