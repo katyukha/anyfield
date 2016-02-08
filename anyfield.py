@@ -339,7 +339,7 @@ def toFn(fn):
 
             >>> def my_super_filter_func(my_sequence, filter_fn):
             ...    filter_fn = toFn(filter_fn)
-            ...    return filter(filter_fn, my_sequence)
+            ...    return list(filter(filter_fn, my_sequence))
             >>> my_super_filter_func(range(15), F % 2 == 0)
             [0, 2, 4, 6, 8, 10, 12, 14]
 
