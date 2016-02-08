@@ -41,4 +41,5 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     keywords=[],
+    test_suite='tests',
 )

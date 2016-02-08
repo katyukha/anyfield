@@ -185,15 +185,21 @@ class SFieldMeta(type):
         mcs.add_operation(cls, '__invert__', operator.not_)
 
         # Extra methods
-        mcs.add_operation(cls, 'q_contains', lambda x, y: y in x)
-        mcs.add_operation(cls, 'q_in', lambda x, y: x in y)
+        mcs.add_operation(cls, 'q_contains', lambda x, y: y in x,
+                          "Check if record contains argument."
+                          "Used instead ``arg in F`` expression")
+        mcs.add_operation(cls, 'q_in', lambda x, y: x in y,
+                          "Check if argument contains record"
+                          "Used instead ``F in arg`` expression")
 
         return cls
 
     @classmethod
-    def add_operation(mcs, cls, name, fn=None):
+    def add_operation(mcs, cls, name, fn=None, doc=None):
         if fn and fn.__name__ == '<lambda>':
             fn.__name__ = '<lambda for %s>' % name
+        if not getattr(fn, '__doc__', None) and doc is not None:
+            fn.__doc__ = doc
         setattr(cls, name, Operator(name, fn))
 
 
@@ -202,44 +208,40 @@ class SField(six.with_metaclass(SFieldMeta, object)):
     """ Class that allows to build simple expressions.
         For example, instead of writing something like::
 
-            l = [{'a': 1, 'b': {'c': 5}, 'd': 4},
-                 {'a': 2, 'b': {'c': 15}, 'd': 3}]
-            l.sort(key=lambda x: x['a'] + x['b']['c'] - x['d'])
+            >>> l = [{'a': -30, 'b': {'c': 5}, 'd': 4},
+            ...      {'a': 2, 'b': {'c': 15}, 'd': 3}]
+            >>> l.sort(key=lambda x: x['a'] + x['b']['c'] - x['d'])
+            >>> l
+            [{'a': -30, 'b': {'c': 5}, 'd': 4}, {'a': 2, 'b': {'c': 15}, 'd': 3}]
 
         With this class it is possible to write folowing::
 
-            l = [{'a': 1, 'b': {'c': 5}, 'd': 4},
-                 {'a': 2, 'b': {'c': 15}, 'd': 3}]
-            SF = SField(dummy=True)
-            l.sort(key=(SF['a'] + SF['b']['c'] - SF['d'])._F)
+            >>> from anyfield import SField
+            >>> l = [{'a': -30, 'b': {'c': 5}, 'd': 4},
+            ...      {'a': 2, 'b': {'c': 15}, 'd': 3}]
+            >>> SF = SField(dummy=True)
+            >>> l.sort(key=(SF['a'] + SF['b']['c'] - SF['d'])._F)
+            >>> l
+            [{'a': -30, 'b': {'c': 5}, 'd': 4}, {'a': 2, 'b': {'c': 15}, 'd': 3}]
 
         Or using SF shortcut and F wrapper defined in this module::
 
-            from anyfield import SField, F
-            l = [{'a': 1, 'b': {'c': 5}, 'd': 4},
-                 {'a': 2, 'b': {'c': 15}, 'd': 3}]
-            l.sort(key=(F['a'] + F['b']['c'] - F['d'])._F)
+            >>> from anyfield import SField, F
+            >>> l = [{'a': -30, 'b': {'c': 5}, 'd': 4},
+            ...      {'a': 2, 'b': {'c': 15}, 'd': 3}]
+            >>> l.sort(key=(F['a'] + F['b']['c'] - F['d'])._F)
+            >>> l
+            [{'a': -30, 'b': {'c': 5}, 'd': 4}, {'a': 2, 'b': {'c': 15}, 'd': 3}]
 
+        :param str name: name of field
         :param bool dummy: if set to True, on next operation new SField instance will be created
 
     """
 
-    def __init__(self, dummy=False):
-        self._stack = []  # operation stack
-        self._dummy = dummy
-
-    def __add_op__(self, op, args, kwargs):
-        """ Add operation to operation stack of this SField instance
-
-            :param callable op: callable that implements operation
-            :param tuple args: arguments template for operation.
-            :return: self
-            :rtype: SField
-        """
-        _logger.debug("__add_op__ called with args (op: %s, args: %s, kwargs: %s)", op, args, kwargs)
-        obj = self if self._dummy is False else self.__class__(dummy=False)
-        obj._stack.append((op, args, kwargs))
-        return obj
+    def __init__(self, name=None, dummy=False):
+        self.__sf_stack__ = []  # operation stack
+        self.__sf_dummy__ = dummy
+        self.__sf_name__ = name
 
     def __apply_fn__(self, fn, *args, **kwargs):
         """ Adds ability to apply specified function to record in expression
@@ -249,13 +251,17 @@ class SField(six.with_metaclass(SFieldMeta, object)):
 
             For example::
 
-                data = ['10', '23', '1', '21', '53', '3', '4', '16']
-                expr = SField().__apply_fn__(int)
-                data.sort(key=expr._F)
-                print data  # will print ['1', '3', '4', '10', '16', '21', '23', '53']
+                >>> data = ['10', '23', '1', '21', '53', '3', '4', '16']
+                >>> expr = SField().__apply_fn__(int)
+                >>> data.sort(key=expr._F)
+                >>> print (data)
+                ['1', '3', '4', '10', '16', '21', '23', '53']
         """
         _logger.debug("__apply_fn__ called with args (fn: %s, args: %s, kwargs: %s)", fn, args, kwargs)
-        return self.__add_op__(fn, [PlaceHolder] + list(args), kwargs)
+
+        obj = self if self.__sf_dummy__ is False else self.__class__(dummy=False)
+        obj.__sf_stack__.append((fn, [PlaceHolder] + list(args), kwargs))
+        return obj
 
     def __calculate__(self, record):
         """ Do final calculation of this SField instances for specified record
@@ -272,7 +278,7 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             else:
                 return arg
 
-        for op, args, kwargs in self._stack:
+        for op, args, kwargs in self.__sf_stack__:
             # process arguments
             args = tuple((process_arg(arg) for arg in args))
             kwargs = {key: process_arg(kwargs[key]) for key in kwargs}
@@ -300,9 +306,17 @@ class SField(six.with_metaclass(SFieldMeta, object)):
     # ---
 
     def __repr__(self):
-        if self._dummy:
-            return u"<SField (dummy)>"
-        return u"<SField (%s)>" % len(self._stack)
+        name = u"<SField %s>"
+
+        if self.__sf_name__:
+            name = name % "[%s]%%s" % self.__sf_name__
+
+        if self.__sf_dummy__:
+            name = name % " (dummy)"
+        else:
+            name = name % len(self.__sf_stack__)
+
+        return name
 
     def __str__(self):
         return repr(self)
@@ -323,9 +337,11 @@ def toFn(fn):
         callable of one arg as parametrs, use this function to adapt argument
         for example::
 
-            def my_super_filter_func(my_sequence, filter_fn):
-                filter_fn = toFn(filter_fn)
-                # Do your code
+            >>> def my_super_filter_func(my_sequence, filter_fn):
+            ...    filter_fn = toFn(filter_fn)
+            ...    return filter(filter_fn, my_sequence)
+            >>> my_super_filter_func(range(15), F % 2 == 0)
+            [0, 2, 4, 6, 8, 10, 12, 14]
 
         This little line of code makes your function be able
         to use SField instances as filter_fn filter functions.
@@ -373,6 +389,12 @@ class SView(object):
         for f in fields:
             assert isinstance(f, SField) or callable(f), "Each field must be callable or instance of SField"
             self.fields.append(toSField(f))
+
+    @property
+    def headers(self):
+        """ List of field names
+        """
+        return [u"%s" % f for f in self.fields]
 
     def __call__(self, data):
         for record in data:

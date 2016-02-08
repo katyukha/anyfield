@@ -12,7 +12,9 @@ Also this module provides shortcuts (already built SField instances),
 that could be starting point of SField expressions. They are: SF, F
 Both are same.
 
-For example::
+For example
+
+.. code:: python
 
    import requests
    from anyfield import F, SView
