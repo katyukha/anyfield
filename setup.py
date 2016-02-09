@@ -8,7 +8,7 @@ _doc = open('README.rst', 'rt').read()
 
 setup(
     name='anyfield',
-    version='0.1.2',
+    version='0.1.3',
     description='Simplifies structured data processing',
     author='Dmytro Katyukha',
     author_email='firemage.dima@gmail.com',

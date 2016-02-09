@@ -32,7 +32,7 @@ Class Reference
 
     .. automethod:: _F
     .. automethod:: _A
-    .. automethod:: __add_op__
+    .. automethod:: __apply_fn__
     .. automethod:: __calculate__
  
 
