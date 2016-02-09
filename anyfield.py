@@ -238,6 +238,14 @@ class SField(six.with_metaclass(SFieldMeta, object)):
 
     """
 
+    # On this attributes AttributeError will be raised
+    # for more info, see __getattr__
+    __sf_not_supported_attributes__ = (
+        '_ipython_canary_method_should_not_exist_',  # ipython check for 'have everything' object
+        '_ipython_display_',                         # attempt to show rich representation for SField instance. it heve no one
+        '__wrapped__',                               # make recursion in inspect.unwrap method. first seen, by attempting to run doctests
+    )
+
     def __init__(self, name=None, dummy=False):
         self.__sf_stack__ = []  # operation stack
         self.__sf_dummy__ = dummy
@@ -324,8 +332,8 @@ class SField(six.with_metaclass(SFieldMeta, object)):
     def __getattr__(self, name):
         # this is required to avoid adding to stack repeating call to tese
         # methods
-        if name in ('_ipython_canary_method_should_not_exist_', '_ipython_display_'):
-            raise AttributeError("Do not add ipython check methods to field stack")
+        if name in self.__sf_not_supported_attributes__:
+            raise AttributeError("This attribute name is not supported by SField instances")
         return self.__apply_fn__(getattr, name)
 
 
