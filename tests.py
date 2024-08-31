@@ -104,10 +104,6 @@ class TestSField(unittest.TestCase):
         self.assertEqual( ((F + 5 - 25) / F).__calculate__(5),
                           (5 + 5 -25) / 5)
 
-# def suite():
-    # suite = unittestTestSuite()
-    # suite.addTest(doctest.DocTestSuite(anyfield))
-    # suite.addTest(TestSField)a
 
 def load_tests(loader, tests, ignore):
     tests.addTests(doctest.DocTestSuite(anyfield))

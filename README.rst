@@ -20,10 +20,12 @@ For example
    from anyfield import F, SView
    data = requests.get('https://api.github.com/repos/vmg/redcarpet/issues?state=closed')
    data = data.json()
-   view = SView(F['id'],
-                F['state'],
-                F['user']['login'],
-                F['title'][:40],
+   view = SView(
+    F['id'],
+    F['state'],
+    F['user']['login'],
+    F['title'][:40],
+    F['comments'].__q_if__("Has comments", "No comments"),
    )
    for row in view(data):
        print(row)

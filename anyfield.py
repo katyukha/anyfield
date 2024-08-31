@@ -50,12 +50,15 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-__version__ = '0.1.3'
+__version__ = '0.2.0'
 __all__ = (
     'SField',
+    'CField',
     'SView',
     'SF',
+    'CF',
     'F',
+    'C',
     'toFn',
     'toSField',
 )
@@ -109,7 +112,8 @@ SUPPORTED_OPERATIONS = [op for op in SUPPORTED_OPERATIONS if getattr(operator, o
 
 @six.python_2_unicode_compatible
 class PlaceHolderClass(object):
-    """ Simple class to represent current calculated value (at start it is record itself), in operation list
+    """ Simple class to represent current calculated value
+        (at start it is record itself), in operation list
     """
     inst = None
 
@@ -126,6 +130,55 @@ class PlaceHolderClass(object):
 
 
 PlaceHolder = PlaceHolderClass()
+
+
+@six.python_2_unicode_compatible
+class ComputeState(object):
+    """ Simple class to handle state of computation of SField.
+        Instances of this class contains original value and current value.
+    """
+    def __init__(self, value):
+        self._orig_val = value
+        self._curr_val = value
+
+    @property
+    def orig(self):
+        """ Original value, that was passed at start of computation.
+        """
+        return self._orig_val
+
+    @property
+    def curr(self):
+        """ Current value, that is computed on previous step.
+        """
+        return self._curr_val
+
+    @curr.setter
+    def curr(self, value):
+        """ Setter for current value
+        """
+        self._curr_val = value
+
+    def resolve(self, arg):
+        """ Resolve value. Handle SField, CField.
+        """
+        # If argument is CField instance, then we have to compute it
+        # based on current value, instead of original value
+        if isinstance(arg, CField):
+            return arg.__calculate__(self.curr)
+
+        # If argument is SField, then let's try to process it by ourselfs
+        # thus operator function will work with already computed value
+        if isinstance(arg, SField):
+            return arg.__calculate__(self.orig)
+
+        return arg
+
+    def __str__(self):
+        return "ComputeState(orig=%(orig)s, curr=%(curr)s)" % {
+            'orig': self.orig,
+            'curr': self.curr,
+        }
 
 
 class Operator(object):
@@ -166,6 +219,22 @@ class Operator(object):
         return "<Operator for %s>" % self.operation
 
 
+def handle_sfield(fn):
+    """ For internal use. This decorators mark function, that handles
+        SField instances automatically. Usually used in functions/operations
+        like `__q_if__` and `__q_match__`
+    """
+    fn.__anyfield_handle_sfield__ = True
+    return fn
+
+
+def handle_state(fn):
+    """ Mark the function, as that one handles original record
+    """
+    fn.__anyfield_handle_state__ = True
+    return fn
+
+
 class SFieldMeta(type):
     """ SField's metaclass. At this time, just generates operator-related methods of SFields
     """
@@ -192,6 +261,40 @@ class SFieldMeta(type):
         mcs.add_operation(cls, 'q_in', lambda x, y: x in y,
                           "Check if argument contains record"
                           "Used instead ``F in arg`` expression")
+        mcs.add_operation(cls, '__q_not__', lambda x: not x,
+                          "Apply not operator to argument"
+                          "For example: F.is_success.__q_not__().")
+
+        # Conditional logic
+        @handle_sfield
+        @handle_state
+        def q_if(state, t, f=False):
+            """ Represents IF operation on SField.
+                Check if argument is evaluated to True or False,
+                and if it is evaluated to True, then return `t` else return `f`
+
+                This operation supports SField instances for t and f.
+            """
+            if state.curr:
+                return state.resolve(t)
+            return state.resolve(f)
+
+
+        @handle_sfield
+        @handle_state
+        def q_match(state, conditions, default=None):
+            """ Check find correct match for X from list of condtions.
+                This is analog to C-lang switch
+            """
+            for key, value in conditions:
+                k = state.resolve(key)
+                if state.curr == k:
+                    return state.resolve(value)
+            return state.resolve(default)
+
+
+        mcs.add_operation(cls, '__q_if__', q_if)
+        mcs.add_operation(cls, '__q_match__', q_match)
 
         return cls
 
@@ -234,6 +337,54 @@ class SField(six.with_metaclass(SFieldMeta, object)):
             >>> [i['a'] for i in l]  # just print first el from dict
             [-30, 2]
 
+        Also, SField supports conditional branching:
+
+            >>> data = {'v1': True, 'v2': False, 'v3': 'some text'}
+            >>> F['v1'].__q_if__('Ok', 'Fail')._F(data)
+            'Ok'
+            >>> F['v2'].__q_if__('Ok', 'Fail')._F(data)
+            'Fail'
+            >>> F['v3'].__q_if__('Ok', 'Fail')._F(data)
+            'Ok'
+            >>> F['v3'].__q_if__(F['v3'], 'Fail')._F(data)
+            'some text'
+            >>> F['v3'].__q_if__(F['v3'].capitalize(), 'Fail')._F(data)
+            'Some text'
+            >>> F['v2'].__q_if__(F['v2'].capitalize(), 'Fail')._F(data)
+            'Fail'
+            >>> F['v2'].__q_if__(F['v2'].capitalize(), F['v3'])._F(data)
+            'some text'
+            >>> F['v2'].__q_if__(C.capitalize(), 'Fail')._F(data)
+            'Fail'
+            >>> F['v3'].__q_if__(C.capitalize(), 'Fail')._F(data)
+            'Some text'
+            >>> F.get('v7').__q_if__(C, 'Fail')._F(data)
+            'Fail'
+            >>> F.get('v3').__q_if__(C, 'Fail')._F(data)
+            'some text'
+
+        Additionally, SField supports pattern-matching in following way:
+
+            >>> fexpression = F.__q_match__([
+            ...    ("one", 1),
+            ...    ("two", 2),
+            ...    ("three", 3),
+            ...    ("four", 4),
+            ... ], default="Not defined")
+            >>> fexpression.__calculate__("one")
+            1
+            >>> fexpression.__calculate__("three")
+            3
+            >>> fexpression.__calculate__("something")
+            'Not defined'
+
+        Example of negative expressions:
+
+            >>> F.__q_not__()._F(True)
+            False
+            >>> F.__q_not__()._F(False)
+            True
+
         :param str name: name of field
         :param bool dummy: if set to True, on next operation new SField instance will be created
 
@@ -249,11 +400,13 @@ class SField(six.with_metaclass(SFieldMeta, object)):
 
     def __init__(self, name=None, dummy=False):
         self.__sf_stack__ = []  # operation stack
-        self.__sf_dummy__ = dummy
+        self.__sf_dummy__ = dummy  # TODO: do we need this
         self.__sf_name__ = name
 
     def __apply_fn__(self, fn, *args, **kwargs):
-        """ Adds ability to apply specified function to record in expression
+        """ Adds ability to apply specified function to record in expression.
+            It is similar to ``map`` but lazy: just adds operation to stack of
+            this expression.
 
             :param callable fn: function to apply to expression result
             :return: SField instance
@@ -265,8 +418,18 @@ class SField(six.with_metaclass(SFieldMeta, object)):
                 >>> data.sort(key=expr._F)
                 >>> print (data)
                 ['1', '3', '4', '10', '16', '21', '23', '53']
+
+            Also, we can use shortcut ``_A``::
+
+                >>> data = ['10', '23', '1', '21', '53', '3', '4', '16']
+                >>> expr = SField()._A(int)
+                >>> data.sort(key=expr._F)
+                >>> print (data)
+                ['1', '3', '4', '10', '16', '21', '23', '53']
         """
-        _logger.debug("__apply_fn__ called with args (fn: %s, args: %s, kwargs: %s)", fn, args, kwargs)
+        _logger.debug(
+            "__apply_fn__ called with args (fn: %s, args: %s, kwargs: %s)",
+            fn, args, kwargs)
 
         obj = self if self.__sf_dummy__ is False else self.__class__(dummy=False)
         obj.__sf_stack__.append((fn, [PlaceHolder] + list(args), kwargs))
@@ -275,28 +438,50 @@ class SField(six.with_metaclass(SFieldMeta, object)):
     def __calculate__(self, record):
         """ Do final calculation of this SField instances for specified record
         """
-        res = record
+        state = ComputeState(record)
 
-        def process_arg(arg):
+        def process_arg(op, arg):
             """ Simple function to process arguments
             """
             if arg is PlaceHolder:
-                return res
-            elif isinstance(arg, SField):
-                return arg.__calculate__(record)
-            else:
+                # If Operator supports handling compute state,
+                # then we just pass state to op function.
+                # Otherwise we pass current value
+                if getattr(op, '__anyfield_handle_state__', False):
+                    return state
+                return state.curr
+
+            # If operator func handle sfield arguments itself, we do not
+            # evaluate SField, operator (op) will evaluate it by itself
+            # (if needed)
+            if getattr(op, '__anyfield_handle_sfield__', False):
                 return arg
+
+            # If argument is CField instance, then we have to compute it
+            # based on current value, instead of original value
+            if isinstance(arg, CField):
+                return arg.__calculate__(state.curr)
+
+            # If argument is SField, then let's try to process it by ourselfs
+            # thus operator function will work with already computed value
+            if isinstance(arg, SField):
+                return arg.__calculate__(state.orig)
+
+            # Return arg unprocessed
+            return arg
 
         for op, args, kwargs in self.__sf_stack__:
             # process arguments
-            args = tuple((process_arg(arg) for arg in args))
-            kwargs = {key: process_arg(kwargs[key]) for key in kwargs}
+            args = tuple((process_arg(op, arg) for arg in args))
+            kwargs = {key: process_arg(op, kwargs[key]) for key in kwargs}
 
-            _logger.debug("calc %s iter (op: %s, args: %s, kwargs: %s)", self, op, args, kwargs)
+            _logger.debug(
+                "calc %s iter (op: %s, args: %s, kwargs: %s)",
+                self, op, args, kwargs)
 
             # do operation
-            res = op(*args, **kwargs)
-        return res
+            state.curr = op(*args, **kwargs)
+        return state.curr
 
     # Shortcut methods
     def _F(self, record):
@@ -311,8 +496,6 @@ class SField(six.with_metaclass(SFieldMeta, object)):
         """ Shortcut for '__apply_fn__' method.
         """
         return self.__apply_fn__(fn, *args, **kwargs)
-
-    # ---
 
     def __repr__(self):
         name = u"<SField %s>"
@@ -338,6 +521,26 @@ class SField(six.with_metaclass(SFieldMeta, object)):
         return self.__apply_fn__(getattr, name)
 
 
+class CField(SField):
+    """ Same as SField, but could be used in SField expressions to compute
+        value based on current value, instead of original value.
+
+        Could be helpful in __q_if__ and __q_match__ expressions.
+    """
+    def __repr__(self):
+        name = u"<CField %s>"
+
+        if self.__sf_name__:
+            name = name % "[%s]%%s" % self.__sf_name__
+
+        if self.__sf_dummy__:
+            name = name % " (dummy)"
+        else:
+            name = name % len(self.__sf_stack__)
+
+        return name
+
+
 def toFn(fn):
     """ Simple wrapper to adapt SField instances to callables,
         that usualy used in .filter(), .sort() and other methods.
@@ -357,7 +560,7 @@ def toFn(fn):
 
         :param fn: callable or SField instance
         :rtype: callable
-        :return: if fn is instance of SField, then it's method .__claculate__ will be returned,
+        :return: if fn is instance of SField, then it's method .__calculate__ will be returned,
                  otherwise 'fn' will be returned unchanged
     """
     if isinstance(fn, SField):
@@ -421,3 +624,8 @@ SF = SField(dummy=True)
 #: Can be used as starting point of SField expression.
 F = SField(dummy=True)
 
+#: Shortcut for CField(dummy=True).
+CF = CField(dummy=True)
+
+#: Shortcut for CField(dummy=True).
+C = CField(dummy=True)
