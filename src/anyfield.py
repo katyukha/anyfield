@@ -1,6 +1,4 @@
 """
-**Note**, this module is in **experimental** stage
-
 This module provides *SField* class which is ised to avaoid lambdas
 there where function of one argument is required to be applied to multiple items
 Examples of such cases could be functions like:
@@ -44,7 +42,7 @@ Will result in::
 
 """
 
-import six
+import types
 import operator
 import logging
 
@@ -110,8 +108,7 @@ SUPPORTED_OPERATIONS = [
 SUPPORTED_OPERATIONS = [op for op in SUPPORTED_OPERATIONS if getattr(operator, op, False)]
 
 
-@six.python_2_unicode_compatible
-class PlaceHolderClass(object):
+class PlaceHolderClass:
     """ Simple class to represent current calculated value
         (at start it is record itself), in operation list
     """
@@ -132,8 +129,7 @@ class PlaceHolderClass(object):
 PlaceHolder = PlaceHolderClass()
 
 
-@six.python_2_unicode_compatible
-class ComputeState(object):
+class ComputeState:
     """ Simple class to handle state of computation of SField.
         Instances of this class contains original value and current value.
     """
@@ -211,9 +207,9 @@ class Operator(object):
 
     def __get__(self, instance, cls):
         if instance is None:
-            return six.create_unbound_method(self, cls)
+            return self
         else:
-            return six.create_bound_method(self, instance)
+            return types.MethodType(self, instance)
 
     def __repr__(self):
         return "<Operator for %s>" % self.operation
@@ -307,8 +303,7 @@ class SFieldMeta(type):
         setattr(cls, name, Operator(name, fn))
 
 
-@six.python_2_unicode_compatible
-class SField(six.with_metaclass(SFieldMeta, object)):
+class SField(metaclass=SFieldMeta):
     """ Class that allows to build simple expressions.
         For example, instead of writing something like::
 

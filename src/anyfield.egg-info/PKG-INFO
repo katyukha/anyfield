@@ -1,3 +1,28 @@
+Metadata-Version: 2.1
+Name: anyfield
+Version: 0.2.0
+Summary: Simplifies structured data processing
+Home-page: https://github.com/katyukha/anyfield
+Author: Dmytro Katyukha
+Author-email: dmytro.katyukha@gmail.com
+License: MPL 2.0
+Project-URL: Bug Tracker, https://github.com/katyukha/anyfield/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Information Technology
+Classifier: License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.7
+License-File: LICENSE
+
 AnyField
 ********
 

@@ -1,0 +1,11 @@
+LICENSE
+MANIFEST.in
+README.rst
+pyproject.toml
+setup.cfg
+setup.py
+src/anyfield.py
+src/anyfield.egg-info/PKG-INFO
+src/anyfield.egg-info/SOURCES.txt
+src/anyfield.egg-info/dependency_links.txt
+src/anyfield.egg-info/top_level.txt
