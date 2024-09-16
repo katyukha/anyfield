@@ -289,8 +289,21 @@ class SFieldMeta(type):
             return state.resolve(default)
 
 
+        @handle_sfield
+        @handle_state
+        def q_first(state, *args, default=None):
+            """ Take first non-null value from arguments.
+                This method take SField instances and resolves it automatically.
+            """
+            for arg in args:
+                val = state.resolve(arg)
+                if val:
+                    return val
+            return state.resolve(default)
+
         mcs.add_operation(cls, '__q_if__', q_if)
         mcs.add_operation(cls, '__q_match__', q_match)
+        mcs.add_operation(cls, '__q_first__', q_first)
 
         return cls
 
