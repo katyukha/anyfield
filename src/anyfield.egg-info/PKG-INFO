@@ -1,6 +1,6 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.2
 Name: anyfield
-Version: 0.2.0
+Version: 0.3.0
 Summary: Simplifies structured data processing
 Home-page: https://github.com/katyukha/anyfield
 Author: Dmytro Katyukha
